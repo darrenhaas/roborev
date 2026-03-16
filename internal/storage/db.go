@@ -1230,6 +1230,15 @@ func (db *DB) CountStalledJobs(threshold time.Duration) (int, error) {
 // no stored verdict. This ensures historical reviews (created before the
 // verdict_bool column existed) are counted by summary stats.
 func backfillVerdictBool(db *DB) error {
+	// Short-circuit: skip the expensive JOIN scan if nothing needs backfilling.
+	var needsBackfill int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM reviews WHERE verdict_bool IS NULL AND output != ''`).Scan(&needsBackfill); err != nil {
+		return err
+	}
+	if needsBackfill == 0 {
+		return nil
+	}
+
 	rows, err := db.Query(`
 		SELECT rv.id, rv.output, j.job_type
 		FROM reviews rv
